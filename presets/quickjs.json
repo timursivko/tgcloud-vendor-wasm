@@ -1,0 +1,11 @@
+{
+  "name": "qjs",
+  "wasm": "@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm",
+  "loader": "@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.mjs",
+  "extra": [
+    "quickjs-emscripten-core/dist/chunk-*.mjs:core.js",
+    "@jitl/quickjs-ffi-types/dist/index.mjs:ffi.js",
+    "@jitl/quickjs-wasmfile-release-sync/dist/ffi.mjs:ffiWasm.js"
+  ],
+  "map": ["@jitl/quickjs-ffi-types:lib/{name}/ffi"]
+}
