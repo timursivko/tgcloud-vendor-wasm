@@ -2,6 +2,10 @@
   "name": "tgcloud-vendor-wasm",
   "version": "0.1.1",
   "description": "Pack a WebAssembly library into deployable modules for Telegram Serverless",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timursivko/tgcloud-vendor-wasm"
+  },
   "type": "module",
   "bin": {
     "vendor-wasm": "./vendor-wasm.mjs"
