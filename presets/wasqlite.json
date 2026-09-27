@@ -1,0 +1,11 @@
+{
+  "name": "wasqlite",
+  "wasm": "wa-sqlite/dist/wa-sqlite.wasm",
+  "loader": "wa-sqlite/dist/wa-sqlite.mjs",
+  "extra": [
+    "wa-sqlite/src/VFS.js:VFS.js",
+    "wa-sqlite/src/examples/MemoryVFS.js:MemoryVFS.js",
+    "wa-sqlite/src/sqlite-api.js:api.js",
+    "wa-sqlite/src/sqlite-constants.js:constants.js"
+  ]
+}

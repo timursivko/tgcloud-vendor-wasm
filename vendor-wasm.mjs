@@ -426,6 +426,9 @@ if (opt.loader) {
   let s = stripMap(read(opt.loader, 'utf8'));
   checkESM(s, opt.loader);
   if (/\.wasm['"]/.test(s)) warn('loader references a .wasm path — runtime must use embedded wasmBinary instead');
+  const code = codeSansNoise(s);
+  if (!/export\s+default\b/.test(code) && !/export\s*\{[^}]*\bdefault\b[^}]*\}/.test(code))
+    warn('loader has no default export — index.js default-imports the factory, wire the named exports by hand');
   writeOut('loader.js', rewriteImports(s, path.dirname(opt.loader)));
 }
 

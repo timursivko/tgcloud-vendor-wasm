@@ -1,0 +1,13 @@
+{
+  "name": "unrar",
+  "wasm": "node-unrar-js/esm/js/unrar.wasm",
+  "loader": "node-unrar-js/esm/js/unrar.js",
+  "extra": [
+    "node-unrar-js/esm/js/unrar.js:unrar-core.js",
+    "node-unrar-js/esm/index.esm.js:unrar-api.js",
+    "node-unrar-js/esm/js/Extractor.js:Extractor.js",
+    "node-unrar-js/esm/js/ExtractorData.js:ExtractorData.js",
+    "node-unrar-js/esm/js/ExtractorData.helper.js:ExtractorData.helper.js",
+    "node-unrar-js/esm/js/unrar.singleton.js:unrar-singleton.js"
+  ]
+}

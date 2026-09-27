@@ -1,0 +1,5 @@
+{
+  "name": "tree-sitter",
+  "wasm": "web-tree-sitter/web-tree-sitter.wasm",
+  "loader": "web-tree-sitter/web-tree-sitter.js"
+}

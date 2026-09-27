@@ -1,0 +1,5 @@
+{
+  "name": "sevenzip",
+  "wasm": "7z-wasm/7zz.wasm",
+  "loader": "7z-wasm/7zz.es6.js"
+}

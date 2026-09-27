@@ -60,8 +60,9 @@ vendor-wasm --name mylib --wasm mod.wasm --loader glue.mjs \
 | `--modules` | node_modules root (default `node_modules`) |
 
 The tool aborts on CommonJS, on zero/ambiguous `.wasm` or glue matches (it lists candidates
-instead of guessing), warns on `require()` / dynamic `import()` / `.wasm` path references,
-syntax-checks every generated file and verifies the base64 roundtrip.
+instead of guessing), warns on `require()` / dynamic `import()` / `.wasm` path references /
+a missing default export in the loader, syntax-checks every generated file and verifies
+the base64 roundtrip.
 
 ## How discovery scores glue
 
@@ -82,6 +83,28 @@ Isolate notes: static imports only; no `URL`, `atob`, `setTimeout`, `performance
 `import()`; give the guest a compute budget (interrupt handler) and a memory limit
 (see `lib/code.js` in this repo for a complete example with QuickJS).
 
+## Tested libraries
+
+Shipped presets, all verified end-to-end:
+
+- `quickjs` — QuickJS engine trio (503 KB wasm, 15 files)
+- `sqlite` — `@sqlite.org/sqlite-wasm`, `--from` just works (869 KB, 18 files)
+- `tree-sitter` — release build (210 KB, 7 files); no default export, so `index.js` needs hand wiring (warned)
+- `wasqlite` — `wa-sqlite` sync build + `MemoryVFS`/API extras (558 KB, 17 files)
+- `unrar` — `node-unrar-js` ESM chain with a `wasmBinary` API (208 KB, 13 files)
+- `sevenzip` — `7z-wasm` factory (1.65 MB, 31 files); `require()`/`import()` hits are a node-guarded branch
+
+Also checked, no preset: `esbuild-wasm`, `@dqbd/tiktoken` and `wasm-flate` pack but need
+`--mode raw` + hand stub (Go / wasm-bindgen runtimes); `@imagemagick/magick-wasm` packs but
+is oversized for deploy (15 MB); `hash-wasm` and `xxhash-wasm` need no packing (self-contained
+ESM — deploy directly). Dead ends by cause: CJS/UMD-only glue (`sql.js`, `argon2-browser`,
+`re2-wasm`, `jq-web`, `vscode-oniguruma`, `@squoosh/lib`, `wawoff2`, `@bokuweb/zstd-wasm`);
+fetch/`URL`/`atob`/WASI at init or multi-asset (`pglite`, `rapier2d-compat`, `automerge`,
+`lightningcss-wasm`, `loro-crdt`, `harper.js`).
+
+Rule of thumb: Emscripten `MODULARIZE` with a default-exported factory packs; CJS glue aborts;
+Go/wasm-bindgen need `raw` + stub.
+
 ## Limitations
 
 - API-layer files from *other* packages (like QuickJS's core chunk) are out of scope for
@@ -92,6 +115,8 @@ Isolate notes: static imports only; no `URL`, `atob`, `setTimeout`, `performance
   want the release file.
 
 ## Contributing presets
+
+Shipped presets: `quickjs`, `sqlite`, `tree-sitter`, `wasqlite`, `unrar`, `sevenzip`.
 
 Got a library that needs hand-written flags? Send a PR adding `presets/<name>.json`:
 

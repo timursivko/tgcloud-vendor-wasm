@@ -1,0 +1,5 @@
+{
+  "name": "sqlite",
+  "wasm": "@sqlite.org/sqlite-wasm/dist/sqlite3.wasm",
+  "loader": "@sqlite.org/sqlite-wasm/dist/index.mjs"
+}
