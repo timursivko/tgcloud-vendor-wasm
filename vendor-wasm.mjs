@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 
 const read = (p, enc) => fs.readFileSync(p, enc);
@@ -26,7 +27,7 @@ function usage(err) {
   console.log(`usage: node tools/vendor-wasm.mjs --preset <name|path> [--out lib]
        node tools/vendor-wasm.mjs --from <pkg> [--from <pkg2>] [--name <n>] [--out lib]
        node tools/vendor-wasm.mjs --name <n> --wasm <f.wasm> [--loader <glue.mjs>]
-       [--extra <src[:dest]> ...] [--map <from:to> ...] [--out lib] [--split 80000] [--mode emscripten|raw] [--modules dir]`);
+       [--extra <src[:dest]> ...] [--map <from:to> ...] [--out lib] [--split 80000] [--mode emscripten|raw] [--modules dir] [--deflate]`);
   process.exit(err ? 1 : 0);
 }
 
@@ -35,6 +36,7 @@ const opt = { extra: [], map: [], from: [], out: 'lib', split: 80000, mode: 'ems
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--extra' || a === '--map' || a === '--from') opt[a.slice(2)].push(argv[++i] ?? usage('missing value for ' + a));
+  else if (a === '--deflate') opt.deflate = true;
   else if (a.startsWith('--')) opt[a.slice(2)] = argv[++i] ?? usage('missing value for ' + a);
   else usage('unknown arg ' + a);
 }
@@ -432,9 +434,22 @@ if (opt.loader) {
   writeOut('loader.js', rewriteImports(s, path.dirname(opt.loader)));
 }
 
-// 3. wasm -> base64 parts + aggregator
+// 3. wasm -> base64 parts + aggregator (raw bytes, or deflate-framed when --deflate)
 const wasm = read(opt.wasm);
-const b64 = wasm.toString('base64');
+let packedNote = '';
+if (opt.deflate) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32LE(wasm.length);
+  const framed = Buffer.concat([len, zlib.deflateRawSync(wasm, { level: 9 })]);
+  packedNote = `deflate ${wasm.length} -> ${framed.length} bytes, `;
+  var b64 = framed.toString('base64');
+  // dependency-free raw-inflate decoder (see inflate.js header for provenance)
+  const inflateSrc = read(path.join(path.dirname(process.argv[1]), 'inflate.js'), 'utf8');
+  checkESM(inflateSrc, 'inflate.js');
+  writeOut('inflate.js', stripMap(inflateSrc));
+} else {
+  var b64 = wasm.toString('base64');
+}
 const per = opt.split;
 const parts = [];
 for (let i = 0, n = 1; i < b64.length; i += per, n++) {
@@ -448,7 +463,8 @@ writeOut('wasm.js', parts.map((n) => `import p${n} from 'lib/${opt.name}/wasmP${
 if (opt.mode === 'emscripten') {
   writeOut('index.js',
 `import factory from 'lib/${opt.name}/loader';
-import wasmB64 from 'lib/${opt.name}/wasm';
+import wasmB64 from 'lib/${opt.name}/wasm';${opt.deflate ? `
+import uncompress from 'lib/${opt.name}/inflate';` : ''}
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 export function b64ToBytes(s) {
@@ -463,21 +479,27 @@ export function b64ToBytes(s) {
   }
   return new Uint8Array(out);
 }
-
-let p = null;
+${opt.deflate ? `export function framedToBytes(s) {
+  const framed = b64ToBytes(s);
+  const len = framed[0] | (framed[1] << 8) | (framed[2] << 16) | (framed[3] << 24);
+  return uncompress(framed.subarray(4), new Uint8Array(len));
+}
+` : ``}let p = null;
 // NOTE: the isolate has no URL/atob/setTimeout and async WebAssembly.instantiate hangs,
 // so: embedded wasmBinary + dummy locateFile + fully synchronous instantiateWasm hook.
 export function getModule() {
   if (!p) {
     p = (async () => {
-      const wasmBinary = b64ToBytes(wasmB64);
+      const wasmBinary = ${opt.deflate ? 'framedToBytes(wasmB64)' : 'b64ToBytes(wasmB64)'};
       return factory({
         wasmBinary,
         locateFile: () => 'module.wasm',
         instantiateWasm: (imports, onSuccess) => {
           const module = new WebAssembly.Module(wasmBinary);
-          onSuccess(new WebAssembly.Instance(module, imports), module);
-          return {};
+          const instance = new WebAssembly.Instance(module, imports);
+          // NOTE: must RETURN the exports — some glue generations assign
+          // asm = instantiateWasm(...) and ignore the callback side effect.
+          return onSuccess(instance, module);
         },
       });
     })();
@@ -506,6 +528,6 @@ try {
 }
 const joined = parts.map((n) => fs.readFileSync(path.join(dir, `wasmP${n}.js`), 'utf8').match(/"([A-Za-z0-9+/=]*)"/)[1]).join('');
 if (joined !== b64) { console.error('error: base64 roundtrip mismatch'); process.exit(1); }
-console.log(`ok: ${path.join(opt.out, opt.name)}/ (${made.length} files, wasm ${wasm.length} bytes -> base64 ${b64.length} chars)`);
+console.log(`ok: ${path.join(opt.out, opt.name)}/ (${made.length} files, ${packedNote}wasm ${wasm.length} bytes -> base64 ${b64.length} chars)`);
 if (warnings.length) console.log(`${warnings.length} warning(s) — review above`);
 console.log('isolate notes: static imports only; no URL/atob/setTimeout/performance/import(); keep heap modest');

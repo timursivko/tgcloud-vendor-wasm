@@ -12,12 +12,13 @@
   },
   "files": [
     "vendor-wasm.mjs",
+    "inflate.js",
     "presets/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --check vendor-wasm.mjs"
+    "test": "node --check vendor-wasm.mjs && node --check inflate.js"
   },
   "engines": {
     "node": ">=18"

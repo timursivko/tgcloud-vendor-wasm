@@ -58,6 +58,7 @@ vendor-wasm --name mylib --wasm mod.wasm --loader glue.mjs \
 | `--split` | Base64 chars per chunk (default `80000`) |
 | `--mode` | `emscripten` (default) or `raw` (prints the module's imports so you can write stubs) |
 | `--modules` | node_modules root (default `node_modules`) |
+| `--deflate` | Deflate the wasm before base64 (`u32LE len` + raw-deflate, decoded in-isolate by a 9 KB vendored decoder) — ~2x smaller modules |
 
 The tool aborts on CommonJS, on zero/ambiguous `.wasm` or glue matches (it lists candidates
 instead of guessing), warns on `require()` / dynamic `import()` / `.wasm` path references /
@@ -74,10 +75,15 @@ Ties break toward the plainer filename. Run with `--loader` to override the pick
 ## Using the output (emscripten mode)
 
 ```js
-import { getModule } from 'lib/mylib';
+import { getModule } from 'lib/mylib/index';
 
 const M = await getModule(); // singleton, sync-instantiated module
 ```
+
+There is no directory-index resolution — import the entry by its full name
+(`lib/mylib/index`, not `lib/mylib`). With `--deflate`, `index.js` inflates the
+payload first (`framedToBytes`); `b64ToBytes` stays exported for hand wiring
+(e.g. passing `wasmBinary` to a factory that accepts it).
 
 Isolate notes: static imports only; no `URL`, `atob`, `setTimeout`, `performance`,
 `import()`; give the guest a compute budget (interrupt handler) and a memory limit
@@ -90,9 +96,9 @@ Shipped presets, all verified end-to-end:
 - `quickjs` — QuickJS engine trio (503 KB wasm, 15 files)
 - `sqlite` — `@sqlite.org/sqlite-wasm`, `--from` just works (869 KB, 18 files)
 - `tree-sitter` — release build (210 KB, 7 files); no default export, so `index.js` needs hand wiring (warned)
-- `wasqlite` — `wa-sqlite` sync build + `MemoryVFS`/API extras (558 KB, 17 files)
+- `wasqlite` — `wa-sqlite` sync build + `MemoryVFS`/API extras (558 KB, 17 files; `--deflate`: 365 KB payload, verified live SQL in the isolate)
 - `unrar` — `node-unrar-js` ESM chain with a `wasmBinary` API (208 KB, 13 files)
-- `sevenzip` — `7z-wasm` factory (1.65 MB, 31 files); `require()`/`import()` hits are a node-guarded branch
+- `sevenzip` — `7z-wasm` factory (`--deflate`: 988 KB total, instantiates live with working `FS`/`callMain`; raw 1.65 MB doesn't fit the ~1 MB cap)
 
 Also checked, no preset: `esbuild-wasm`, `@dqbd/tiktoken` and `wasm-flate` pack but need
 `--mode raw` + hand stub (Go / wasm-bindgen runtimes); `@imagemagick/magick-wasm` packs but
@@ -107,12 +113,22 @@ Go/wasm-bindgen need `raw` + stub.
 
 ## Limitations
 
+- Total module space is capped at roughly **1 MB** (measured: ~1006 KB via `run`
+  works, ~1026 KB fails with `Invalid module name`). Keep packed output well
+  under it — that is what `--deflate` is for (wa-sqlite: 836 → 505 KB,
+  7z: 2.2 MB → 988 KB and runnable; sqlite's 642 KB loader alone eats most
+  of the budget, so it still doesn't fit).
 - API-layer files from *other* packages (like QuickJS's core chunk) are out of scope for
   discovery — the tool lists shipped-but-unincluded files so you can add them via `--extra`.
 - Single-threaded, non-WASI builds only: no threads, no `wasi_snapshot_preview1` shims.
   Prefer `browser`/`worker`-flavored ESM glue over `node`/debug variants.
 - Debug builds score high (they contain every marker) — override with `--loader` if you
   want the release file.
+- Verified live in the isolate: wa-sqlite runs real SQL (SQLite 3.44.0) and 7z
+  instantiates with a working `FS`/`callMain`. Async `WebAssembly.instantiate`
+  hangs there (use the generated sync hook); there is no `atob`/`URL`/`setTimeout`/
+  `performance`/`crypto`, and `import.meta` is an empty object. Keep handler modules
+  free of top-level `await`.
 
 ## Contributing presets
 
